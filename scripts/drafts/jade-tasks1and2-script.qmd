@@ -53,3 +53,65 @@ raw_data_long_log |>
 ## Task 2
 
 ### 2.  Temporarily remove the outlier trimming from preprocessing and do some exploratory analysis of outlying values. Are there specific *subjects* (not values) that seem to be outliers? If so, are outliers more frequent in one group or the other? (Hint: consider tabluating the number of outlying values per subject.)
+
+```{r}
+# get names
+var_names <- read_csv(here::here('data/biomarker-raw.csv'), 
+                     col_names = F, 
+                     n_max = 2, 
+                     col_select = -(1:2)) %>%
+  t() %>%
+  as_tibble() %>%
+  rename(name = V1, 
+         abbreviation = V2) %>%
+  na.omit()
+
+# function for trimming outliers (good idea??)
+trim <- function(x, .at){
+  x[abs(x) > .at] <- sign(x[abs(x) > .at])*.at
+  return(x)
+}
+
+# read in data
+biomarker_clean_outliers <- read_csv(here::here('data/biomarker-raw.csv'), 
+         skip = 2,
+         col_select = -2L,
+         col_names = c('group', 
+                       'empty',
+                       pull(var_names, abbreviation),
+                       'ados'),
+         na = c('-', '')) %>%
+  filter(!is.na(group)) %>%
+  # log transform, center and scale, and trim
+  mutate(across(.cols = -c(group, ados), 
+                ~ (scale(log10(.x))[, 1]))) %>%
+  # reorder columns
+  select(group, ados, everything())
+
+```
+
+#### Looking at if some proteins are more likely to be outliers than others.
+
+```{r}
+longer_outliers <- biomarker_clean_outliers |> 
+  mutate(ID = row_number()) |> 
+  pivot_longer(CHIP:PLXB2)
+
+longer_outliers |> 
+  filter(value <= -3 | value >= 3) |> 
+  group_by(name) |> 
+  summarize(n = n()) |> 
+  filter(n >2)
+```
+
+Most of the proteins had an outlier value in at least one participant, only `r 344 / 1317 * 100`% of proteins have 3 or more participants with an outlier value.
+
+### Looking if particular *subjects* consistently have outliers
+```{r}
+longer_outliers |> 
+  filter(value <= -3 | value >= 3) |> 
+  group_by(ID) |> 
+  summarise(n = n(),
+            group = group[1])
+```
+
