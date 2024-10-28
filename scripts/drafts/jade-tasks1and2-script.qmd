@@ -23,12 +23,22 @@ raw_data_long <- raw_data |>
 raw_data_long |> 
   filter(value <= 20000) |> 
   ggplot(aes(x = value)) + 
-  geom_histogram() + 
-  facet_wrap(~name)
+  geom_histogram(bins = 30) + 
+  facet_wrap(~name) +
+  labs(title = "Original Distributions of Protein Levels", y = "Count", x = 'Protein Level')
 
 raw_data_long |> 
   group_by(name) |> 
-  summarize("Mean Level" = mean(na.omit(value)))
+  summarize("Mean Level" = mean(na.omit(value))) |> 
+  kableExtra::kable(
+    caption = "Mean Levels of Selected Proteins",
+    col.names = c("Protein", "Mean Level") 
+  ) |> 
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = F,
+    font_size = 14
+  )
 ```
 We see that the protein levels in `biomarker-raw.csv` seem to be incredibly high, with a lot of the proteins having mean levels at or above 1000. Additionally, we see hat a lot of the distributions are pretty heavily right-skewed, and thus are likely not to be normally distributed.
 
@@ -40,12 +50,22 @@ raw_data_long_log <- raw_data_long |>
 
 raw_data_long_log |> 
   ggplot(aes(x = log_value)) + 
-  geom_histogram() + 
-  facet_wrap(~name)
+  geom_histogram(bins = 30) + 
+  facet_wrap(~name) +
+  labs(title = "Distributions of Protein Levels After Log-Transform", y = "Count", x = 'Log Protein Level')
 
 raw_data_long_log |> 
   group_by(name) |> 
-  summarize("Mean Log Level" = mean(na.omit(log_value)))
+  summarize("Mean Log Level" = mean(na.omit(log_value))) |> 
+  kableExtra::kable(
+    caption = "Mean Log Levels of Selected Proteins",
+    col.names = c("Protein", "Mean Log Level") 
+  ) |> 
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = F,
+    font_size = 14
+  )
 
 ```
 
@@ -101,17 +121,64 @@ longer_outliers |>
   filter(value <= -3 | value >= 3) |> 
   group_by(name) |> 
   summarize(n = n()) |> 
-  filter(n >2)
+  mutate(Group = case_when(
+    n <= 2 ~ "0-2 subject with an outlier value",
+    n > 2 & n <= 5 ~ "3-5 subjects with outlier values",
+    TRUE ~ ">5 subjects with outlier values"
+  )) |> 
+  group_by(Group) |> 
+  summarise('Number of Proteins' = n()) |> 
+  kableExtra::kable(
+    caption = "Grouping Proteins by Number of Subjects with Outlier Value",
+    col.names = c("Protein Group", "Number of Proteins") 
+  ) |> 
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = F,
+    font_size = 14
+  )
 ```
 
-Most of the proteins had an outlier value in at least one participant, only `r 344 / 1317 * 100`% of proteins have 3 or more participants with an outlier value.
+Most of the proteins had an outlier value in at least one participant, only `r 9 / 1317 * 100`% of proteins have 6 or more participants with an outlier value. The majority of proteins do not have have multiple subjects with an outlier value. 
 
 ### Looking if particular *subjects* consistently have outliers
 ```{r}
-longer_outliers |> 
+outliers_per_id <- longer_outliers |> 
   filter(value <= -3 | value >= 3) |> 
   group_by(ID) |> 
-  summarise(n = n(),
-            group = group[1])
-```
+  summarise('Number of Protiens with Outlier Values' = n(),
+            group = group[1]) |> 
+    mutate('Outlier Grouping' = case_when(
+    `Number of Protiens with Outlier Values` <= 40 ~ "Less than or equal to 40 outlier proteins",
+    `Number of Protiens with Outlier Values` > 40 & `Number of Protiens with Outlier Values` <= 100 ~ "40-100 outlier proteins",
+    TRUE ~ " >100 outlier proteins"
+  ))
 
+outliers_per_id |> 
+  group_by(`Outlier Grouping`) |> 
+  summarize('Number of Subjects' = n()) |> 
+  kableExtra::kable(
+    caption = "Distribution of Amount of Outlier Proteins per Subjects",
+    col.names = c("Outlier Grouping", "Number of Subjects") 
+  ) |> 
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = F,
+    font_size = 14
+  )
+
+outliers_per_id |> 
+  filter(`Number of Protiens with Outlier Values` >= 40) |> 
+  kableExtra::kable(
+    caption = "Outlier Subjects",
+    col.names = c("ID", "Number of Proteins with Outlier Values", "Group", "Outlier Grouping") 
+  ) |> 
+  kableExtra::kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = F,
+    font_size = 14
+  )
+```
+We see the majority of subjects seem to have less than or equal to 40 outlier proteins, with only 11 subjects having more than 40 proteins with outlier levels. 
+
+There do seem to be particular subjects that consistently have outlier protein values, with some subjects having outlier values in over 100 different proteins. Such subjects seem more likely to be in the typical developing group, with 8 subjects from the typical developing group having 40 or more proteins with outlier levels, and only 3 subjects from the ASD group having 40 or more proteins with outlier levels.
