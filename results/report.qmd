@@ -27,7 +27,9 @@ Write a brief one-paragraph abstract that describes the contents of your write-u
 
 ## Dataset
 
-Write a brief data description, including: how data were obtained; sample characteristics; variables measured; and data preprocessing. This can be largely based on the source paper and should not exceed 1-2 paragraphs.
+<!-- Write a brief data description, including: how data were obtained; sample characteristics; variables measured; and data preprocessing. This can be largely based on the source paper and should not exceed 1-2 paragraphs. -->
+
+Data was collected on 154 male pediatric subjects, 76 of which were diagnosed with autism spectrum disorder (ASD) and the other 78 were determined to be typically developing (TD). Demographic data was collected for all participants, including age, ethnicity, co-morbidities, and psychiatric medications. The mean age of the ASD group was 5.6 years old, and the mean age of subjects from the TD group was 5.7 years old. Additionally, the SOMAScan platform 1.3k was used to measure the levels of 1,317 proteins in each subject. The levels of these proteins were then log10-transformed, standardized, and then outliers were trimmed to values of -3 or 3 depending on their sign.
 
 ## Summary of published analysis
 
