@@ -42,8 +42,6 @@ Data was collected on 154 male pediatric subjects, 76 of which were diagnosed wi
 
 ## Findings
 
-<!-- Summarize your findings here. I've included some subheaders in a way that seems natural to me; you can structure this section however you like. -->
-
 ### Impact of preprocessing and outliers
 
 #### Log-Transform
