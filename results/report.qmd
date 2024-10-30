@@ -30,7 +30,9 @@ raw_data <- read_csv('../data/biomarker-raw.csv')
 
 ## Abstract
 
-<!-- Write a brief one-paragraph abstract that describes the contents of your write-up. -->
+This report explores the identification of biomarkers associated with Autism Spectrum Disorder (ASD) using data from L.Hewitson's experiment in 2021. Though the original report has since been retracted due to unreliable methodology, this report explores the data and tests alternate methods to those used in the original study. We started with testing why the data was log-transformed, concluding the log-transformation simply made the data more closely resemble a normal distribution, making it easier to work with. We then tested to see if there are any proteins that seem to commonly occur as outliers and if there are any subjects that seem to consistently have outlier protein values. After this analysis, it was apparent that none of the proteins occur unproportionally as outliers, however there were a few patients with over 40 outlier proteins, most of which were in the typically developing (TD) group.
+
+We then aimed to identify an alternative panel of proteins using methods that were not previously implemented, where we successfully found several alternative protein panels that were either comparable or better in their accuracy. Performance metrics demonstrated that these panels could contain other potential reliable biomarkers for ASD diagnosis and reinforced the strength of the DERM and IgD proteins as biomarkers.
 
 ## Dataset
 
@@ -306,3 +308,12 @@ fit_test %>%
                 event_level = 'second')
 
 ```
+
+Having previously been provided with a model that used a multiple t-test and random forest model for the purpose of variable selection, we attempted to find a out if we can create another panel with similar, or better, results. In our first approach, we implemented the lasso regression model with the goal of shrinking all predictors zero except for at most 6. Originally, we wanted to find less than ten, but with some trial and error, the results showed that using only 6 proteins produced the best results. We were left with PTN, MAPK2, Coagulation Factor IX, IgD, DERM, and aldolase A, which we plugged into a logistic model, then calculating the performance metrics using the test data. From the results, the roc_auc and sensitivity of our model were lower than those of the in-class analysis, however, the accuracy was the same and the specificity was higher.
+
+
+
+
+
+
+
