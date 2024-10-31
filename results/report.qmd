@@ -1,7 +1,7 @@
 ---
 title: "Biomarkers of ASD"
-subtitle: "If you want a subtitle put it here"
-author: "List names here"
+subtitle: "Group 8"
+author: "Candis Wu, Jade Michael O'Brien, Joseph Zaki, Daniel Ariel Ledvin"
 date: last-modified
 published-title: "Updated"
 editor: visual
@@ -32,7 +32,7 @@ raw_data <- read_csv('../data/biomarker-raw.csv')
 
 This report explores the identification of biomarkers associated with Autism Spectrum Disorder (ASD) using data from L.Hewitson's experiment in 2021. Though the original report has since been retracted due to unreliable methodology, this report explores the data and tests alternate methods to those used in the original study. We started with testing why the data was log-transformed, concluding the log-transformation simply made the data more closely resemble a normal distribution, making it easier to work with. We then tested to see if there are any proteins that seem to commonly occur as outliers and if there are any subjects that seem to consistently have outlier protein values. After this analysis, it was apparent that none of the proteins occur disproportionately as outliers, however there were a few patients with over 40 outlier proteins, most of which were in the typically developing (TD) group.
 
-We then aimed to identify an alternative panel of proteins using methods that were not previously implemented, where we successfully found several alternative protein panels that were either comparable or better in their accuracy. Performance metrics demonstrated that these panels could contain other potential reliable biomarkers for ASD diagnosis and reinforced the strength of the DERM and IgD proteins as biomarkers.
+To explore alternative predictive biomarkers, we performed feature selection using a training partition to avoid overfitting and replicated the selection across different methods. Additionally, we experimented with combining sets of top predictive proteins through both a hard intersection and a fuzzy intersection approach, finding that the latter introduced more flexibility while retaining strong classifiers. Performance metrics demonstrated that these panels could contain other potential reliable biomarkers for ASD diagnosis and reinforced the strength of the DERM and IgD proteins as biomarkers.
 
 ## Dataset
 
@@ -44,7 +44,7 @@ Data was collected on 154 male pediatric subjects, 76 of which were diagnosed wi
 
 ## Findings
 
-### Impact of preprocessing and outliers
+### Impact of preprocessing and outliers (Task 1 & 2)
 
 #### Log-Transform
 
@@ -219,11 +219,320 @@ We see the majority of subjects seem to have less than or equal to 40 outlier pr
 
 There do seem to be particular subjects that consistently have outlier protein values, with some subjects having outlier values in over 100 different proteins. Such subjects seem more likely to be in the typical developing group, with 8 subjects from the typical developing group having 40 or more proteins with outlier levels, and only 3 subjects from the ASD group having 40 or more proteins with outlier levels.
 
-### Methodlogical variations
+### Methodological variations (Task 3)
 
-Task 3
+#### Part 1: Repeat the analysis
 
-### Improved classifier
+Note: carry out the entire selection procedure on a training partition -- in other words, set aside some testing data at the very beginning and don't use it until you are evaluating accuracy at the very end
+
+```{r}
+set.seed(101422)
+
+biomarker_split <- biomarker_clean %>%
+  initial_split(prop = 0.8)
+
+train <- training(biomarker_split)
+test <- testing(biomarker_split)
+```
+
+Replicating the feature selecting process on only the training dataset.
+
+```{r}
+# code taken from the inclass-analysis.R script
+# getting the first panel of proteins using t-test
+test_fn <- function(.df){
+  t_test(.df, 
+         formula = level ~ group,
+         order = c('ASD', 'TD'),
+         alternative = 'two-sided',
+         var.equal = F)
+}
+
+ttests_out <- train %>%
+  select(-ados) %>%
+  pivot_longer(-group, 
+               names_to = 'protein', 
+               values_to = 'level') %>%
+  nest(data = c(level, group)) %>% 
+  mutate(ttest = map(data, test_fn)) %>%
+  unnest(ttest) %>%
+  arrange(p_value) %>%
+  mutate(m = n(),
+         hm = log(m) + 1/(2*m) - digamma(1),
+         rank = row_number(),
+         p.adj = m*hm*p_value/rank)
+
+proteins_s1 <- ttests_out %>%
+  slice_min(p.adj, n = 10) %>%
+  pull(protein)
+```
+
+```{r}
+# getting the second panel of proteins using random forest
+predictors <- train %>%
+  select(-c(group, ados))
+
+response <- train %>% pull(group) %>% factor()
+
+set.seed(101422)
+rf_out <- randomForest(x = predictors, 
+                       y = response, 
+                       ntree = 1000, 
+                       importance = T)
+
+rf_out$confusion
+
+proteins_s2 <- rf_out$importance %>% 
+  as_tibble() %>%
+  mutate(protein = rownames(rf_out$importance)) %>%
+  slice_max(MeanDecreaseGini, n = 10) %>%
+  pull(protein)
+```
+
+```{r}
+# getting the intercept of the two panels and fitting it into logistic regression
+
+proteins_sstar <- intersect(proteins_s1, proteins_s2)
+
+biomarker_sstar <- train %>%
+  select(group, any_of(proteins_sstar)) %>%
+  mutate(class = (group == 'ASD')) %>%
+  select(-group)
+
+test <- test %>%
+  select(group, any_of(proteins_sstar)) %>%
+  mutate(class = (group == 'ASD')) %>%
+  select(-group)
+
+fit <- glm(class ~ ., 
+           data = biomarker_sstar, 
+           family = 'binomial')
+
+class_metrics <- metric_set(sensitivity, 
+                            specificity, 
+                            accuracy,
+                            roc_auc)
+
+test %>%
+  add_predictions(fit, type = 'response') %>%
+  mutate(est = as.factor(pred > 0.5), tr_c = as.factor(class)) %>%
+  class_metrics(estimate = est,
+              truth = tr_c, pred,
+              event_level = 'second')
+```
+
+We have these four proteins (DERM, IgD, TSP4, FSTL1) for our final panel.
+
+#### Part 2: Choose a larger number of top predictive proteins
+
+Note: more than ten and use each selection method
+
+```{r}
+# I am choosing 20 to allow a larger intercept values
+
+############## MULTIPLE TESTING ###############
+
+test_fn <- function(.df){
+  t_test(.df, 
+         formula = level ~ group,
+         order = c('ASD', 'TD'),
+         alternative = 'two-sided',
+         var.equal = F)
+}
+
+ttests_out <- biomarker_clean %>%
+  select(-ados) %>%
+  pivot_longer(-group, 
+               names_to = 'protein', 
+               values_to = 'level') %>%
+  nest(data = c(level, group)) %>% 
+  mutate(ttest = map(data, test_fn)) %>%
+  unnest(ttest) %>%
+  arrange(p_value) %>%
+  mutate(m = n(),
+         hm = log(m) + 1/(2*m) - digamma(1),
+         rank = row_number(),
+         p.adj = m*hm*p_value/rank)
+
+# select significant proteins
+proteins_s1 <- ttests_out %>%
+  slice_min(p.adj, n = 20) %>% 
+  pull(protein)
+
+################## RANDOM FOREST ##################
+
+# store predictors and response separately
+predictors <- biomarker_clean %>%
+  select(-c(group, ados))
+
+response <- biomarker_clean %>% pull(group) %>% factor()
+
+set.seed(101422)
+rf_out <- randomForest(x = predictors, 
+                       y = response, 
+                       ntree = 1000, 
+                       importance = T)
+
+proteins_s2 <- rf_out$importance %>% 
+  as_tibble() %>%
+  mutate(protein = rownames(rf_out$importance)) %>%
+  slice_max(MeanDecreaseGini, n = 20) %>% 
+  pull(protein)
+
+#################### LOGISTIC REGRESSION ####################
+
+proteins_sstar <- intersect(proteins_s1, proteins_s2)
+proteins_sstar
+
+biomarker_sstar <- biomarker_clean %>%
+  select(group, any_of(proteins_sstar)) %>%
+  mutate(class = (group == 'ASD')) %>%
+  select(-group)
+```
+
+Now we have ten proteins (DERM, RELT, MRC2, IgD, PTN, FSTL1, Cadherin-5, MMP-2, Notch 1, ALCAM) in our final panel.
+
+```{r}
+set.seed(101422)
+biomarker_split <- biomarker_sstar %>%
+  initial_split(prop = 0.8)
+
+fit <- glm(class ~ ., 
+           data = training(biomarker_split), 
+           family = 'binomial')
+
+class_metrics <- metric_set(sensitivity, 
+                            specificity, 
+                            accuracy,
+                            roc_auc)
+
+testing(biomarker_split) %>%
+  add_predictions(fit, type = 'response') %>%
+  mutate(est = as.factor(pred > 0.5), tr_c = as.factor(class)) %>%
+  class_metrics(estimate = est,
+              truth = tr_c, pred,
+              event_level = 'second')
+```
+
+**Increasing the number of selected proteins**: By expanding from 10 to 20 top proteins, we've allowed for potentially more relevant predictors, increasing the specificity slightly but not affecting sensitivity much. This change leads to more comprehensive protein coverage, improving accuracy and ROC AUC.
+
+#### Part 3: Fuzzy Intersection
+
+Note: instead of a hard intersection use a fuzzy intersection to combine the sets of top predictive proteins across selection methods. How are results affected by each modification?
+
+```{r}
+################### MULTIPLE TESTING ###################
+
+test_fn <- function(.df){
+  t_test(.df, 
+         formula = level ~ group,
+         order = c('ASD', 'TD'),
+         alternative = 'two-sided',
+         var.equal = F)
+}
+
+ttests_out <- biomarker_clean %>%
+  select(-ados) %>%
+  pivot_longer(-group, 
+               names_to = 'protein', 
+               values_to = 'level') %>%
+  nest(data = c(level, group)) %>% 
+  mutate(ttest = map(data, test_fn)) %>%
+  unnest(ttest) %>%
+  arrange(p_value) %>%
+  mutate(m = n(),
+         hm = log(m) + 1/(2*m) - digamma(1),
+         rank = row_number(),
+         p.adj = m*hm*p_value/rank)
+
+proteins_s1 <- ttests_out %>%
+  slice_min(p.adj, n = 10) %>%
+  pull(protein)
+
+##################### RANDOM FOREST ####################
+
+predictors <- biomarker_clean %>%
+  select(-c(group, ados))
+
+response <- biomarker_clean %>% pull(group) %>% factor()
+
+set.seed(101422)
+rf_out <- randomForest(x = predictors, 
+                       y = response, 
+                       ntree = 1000, 
+                       importance = T)
+
+proteins_s2 <- rf_out$importance %>% 
+  as_tibble() %>%
+  mutate(protein = rownames(rf_out$importance)) %>%
+  slice_max(MeanDecreaseGini, n = 10) %>%
+  pull(protein)
+
+# Define the selection threshold for the fuzzy intersection (e.g., protein must appear in at least 2 out of 2 methods here)
+fuzzy_threshold <- 1  # Adjust this based on the number of methods
+
+# Combine selected proteins from different methods into a single data frame
+protein_selection <- tibble(
+  protein = unique(c(proteins_s1, proteins_s2)),
+  t_test_selected = protein %in% proteins_s1,
+  rf_selected = protein %in% proteins_s2
+)
+
+# Calculate an inclusion score based on the frequency of selection
+# This fuzzy inclusion score can be adjusted as needed
+protein_selection <- protein_selection %>%
+  mutate(inclusion_score = rowSums(select(., t_test_selected, rf_selected)))
+
+# Filter proteins based on the fuzzy threshold for inclusion
+fuzzy_proteins <- protein_selection %>%
+  filter(inclusion_score >= fuzzy_threshold) %>%
+  pull(protein)
+
+# Check results by comparing with hard intersection
+hard_intersection_proteins <- intersect(proteins_s1, proteins_s2)
+
+# Output for analysis
+list(
+  fuzzy_proteins = fuzzy_proteins,
+  hard_intersection_proteins = hard_intersection_proteins
+)
+```
+
+This approach allows for greater flexibility in protein selection allowing for more in the protein list, potentially including proteins with lesser predictive strength, while the hard method ensures higher confidence in selected biomarkers.
+
+```{r}
+biomarker_sstar <- biomarker_clean %>%
+  select(group, any_of(fuzzy_proteins)) %>%
+  mutate(class = (group == 'ASD')) %>%
+  select(-group)
+
+# partition into training and test set
+set.seed(101422)
+biomarker_split <- biomarker_sstar %>%
+  initial_split(prop = 0.8)
+
+# fit logistic regression model to training set
+fit <- glm(class ~ ., 
+           data = training(biomarker_split), 
+           family = 'binomial')
+
+# evaluate errors on test set
+class_metrics <- metric_set(sensitivity, 
+                            specificity, 
+                            accuracy,
+                            roc_auc)
+
+testing(biomarker_split) %>%
+  add_predictions(fit, type = 'response') %>%
+  mutate(est = as.factor(pred > 0.5), tr_c = as.factor(class)) %>%
+  class_metrics(estimate = est,
+              truth = tr_c, pred,
+              event_level = 'second')
+```
+
+**Using a fuzzy intersection**: This modification aims to retain proteins chosen by either selection method, rather than only the exact matches. Although it captures more potential biomarkers, it lowers sensitivity and accuracy slightly, indicating that the fuzzy selection introduces less specific, possibly weaker predictors. ROC AUC remains high but shows reduced confidence in positive classification, as shown by lower sensitivity.
+
+### Improved classifier (Task 4)
 
 ```{r}
 ## Lasso Regression
@@ -310,10 +619,3 @@ fit_test %>%
 ```
 
 Having previously been provided with a model that used a multiple t-test and random forest model for the purpose of variable selection, we attempted to find a out if we can create another panel with similar, or better, results. In our first approach, we implemented the lasso regression model with the goal of shrinking all predictors zero except for at most 6. Originally, we wanted to find less than ten, but with some trial and error, the results showed that using only 6 proteins produced the best results. We were left with PTN, MAPK2, Coagulation Factor IX, IgD, DERM, and aldolase A, which we plugged into a logistic model, then calculating the performance metrics using the test data. From the results, the roc_auc and sensitivity of our model were lower than those of the in-class analysis, however, the accuracy was the same and the specificity was higher.
-
-
-
-
-
-
-
