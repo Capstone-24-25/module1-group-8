@@ -37,14 +37,15 @@ forward_model <- stats::step(null_fit, direction = "forward",
 ```
 
 ```{r}
-class_metrics <- metric_set(sensitivity, specificity, accuracy)
+class_metrics <- metric_set(sensitivity, specificity, accuracy, roc_auc)
 model_predictors <- forward_model$model %>% select(-class) %>% colnames()
 
 biomarker_test %>% 
-  select(forward_model$model %>% colnames()) %>% 
+  select(all_of(model_predictors), class) %>% 
   modelr::add_predictions(model = forward_model, type = "response") %>% 
-  mutate(est = as.factor(pred>0.5), tr = as.factor(ifelse(class == 1, T, F))) %>%
-  class_metrics(truth = tr, estimate = est, event_level = "second")
+  mutate(est = as.factor(pred>0.5), 
+         tr = as.factor(ifelse(class == 1, T, F))) %>%
+  class_metrics(truth = tr, estimate = est, pred, event_level = "second")
 
 ```
 
