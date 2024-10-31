@@ -1,7 +1,7 @@
 ```{r, message = F}
 library(tidyverse)
 library(tidymodels)
-load('../data/biomarker-clean.RData')
+load('../../data/biomarker-clean.RData')
 biomarker <- biomarker_clean %>%
   mutate(class = as.numeric(group == 'ASD')) %>% 
   select(-ados, -group)
@@ -37,7 +37,7 @@ forward_model <- stats::step(null_fit, direction = "forward",
 ```
 
 ```{r}
-class_metrics <- metric_set(sensitivity, specificity, accuracy, roc_auc)
+class_metrics <- metric_set(sensitivity, specificity, accuracy)
 model_predictors <- forward_model$model %>% select(-class) %>% colnames()
 
 biomarker_test %>% 
