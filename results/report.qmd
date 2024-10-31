@@ -40,7 +40,33 @@ Data was collected on 154 male pediatric subjects, 76 of which were diagnosed wi
 
 ## Summary of published analysis
 
-<!-- Summarize the methodology of the paper in 1-3 paragraphs. You need not explain the methods in depth as we did in class; just indicate what methods were used and how they were combined. If possible, include a diagram that depicts the methodological design. (Quarto has support for GraphViz and Mermaid flowcharts.) Provide key results: the proteins selected for the classifier and the estimated accuracy. -->
+In the paper *"Blood biomarker discovery for autism spectrum disorder: A proteomic analysis"*, Hewitson et al. aim to identify a panel of proteins which can be used as biomarkers for Autism Spectrum Disorder (ASD). The study included 154 male subjects ranging from 18 months of age to 8 years of age. In their paper, Hewitson et al. identified 9 proteins associated with ASD in young boys. After drawing blood from each of the 154 subjects, the SOMAScan platform was used to measure the protein levels of 1,317 proteins in the boys' serum samples. Before any analysis was performed, the data were normalized by taking a log10 transformation, a z-transformation, and clipping outliers at -3 and 3.
+
+To identify which proteins were strongly associated with ASD, Hewitson et al. used three different methods to determine the significance of each protein, then selected the top 10 most significant proteins from each method.
+
+1.  The first method used was a random forest which was used to assign an importance score to each protein. The measure used for this importance score was the Mean Gini Index. The random forest model was trained 1000 times and the proteins' importance scores were averaged across all 1000 runs. Ultimitely the proteins with the 10 highest scores were selected for this model. The selected proteins were: MAPK14, IgD, DERM, EPHB2, ALCAM, eIF-4H, suPAR, SOST, C6, and Calcineurin.
+2.  The second method used was a standard two sample t-test which determines if there is a significant difference in the level of each protein across the TD and ASD groups. The 10 proteins that were found to be most significant were: DERM, suPAR, Calcineurin, MAPK14, EPHB2, RELT, FCN1, IgD, PTN, and C1QR1.
+3.  The third method used was a correlation approach, in which the correlation between the levels of each protein and the subjects' ADOS score (representing severity of ASD) was calculated. The 10 proteins with the highest absolute value of correlation were selected. These proteins were: DERM, RELT, EPHB2, MAPK14, Prolactin Receptor, ROR1, GI24, suPAR, ARSB, and IgD.
+
+By combining the results of these three methods, Hewitson et al. identified 18 unqiue proteins to further study. 5 of these proteins were selected by all three of the models (MAPK14, IgD, DERM, EPHB2, suPAR). These 5 proteins were taken to be a "core panel" and each of the remaining 13 proteins was investigated to determine if they added any further predictive power to the logistic regression model.
+
+Finally, 9 proteins were identified to be part of the final biomarker panel. These proteins included the 5 from the core panel (MAPK14, IgD, DERM, EPHB2, suPAR) and four additional proteins which were not identified by all three methods (ROR1, GI24, eIF-4H, ARSB).
+
+```{mermaid}
+flowchart LR
+  A[Gather Data] --> B[Normalize, clip outliers]
+  B --> C[Identify 10 proteins - Random Forest]
+  B --> D[Identify 10 proteins - t-Test]
+  B --> E[Identify 10 proteins - Correlations with ADOS]
+  C --> F[Identify core panel - 5 proteins found in all 3 methods]
+  D --> F
+  E --> F
+  C --> G[Individually test remaing proteins]
+  D --> G
+  E --> G
+  F --> Z[Final panel]
+  G --> Z
+```
 
 ## Findings
 
