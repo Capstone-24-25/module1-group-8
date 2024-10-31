@@ -30,7 +30,7 @@ raw_data <- read_csv('../data/biomarker-raw.csv')
 
 ## Abstract
 
-This report explores the identification of biomarkers associated with Autism Spectrum Disorder (ASD) using data from L.Hewitson's experiment in 2021. Though the original report has since been retracted due to unreliable methodology, this report explores the data and tests alternate methods to those used in the original study. We started with testing why the data was log-transformed, concluding the log-transformation simply made the data more closely resemble a normal distribution, making it easier to work with. We then tested to see if there are any proteins that seem to commonly occur as outliers and if there are any subjects that seem to consistently have outlier protein values. After this analysis, it was apparent that none of the proteins occur disproportionately as outliers, however there were a few patients with over 40 outlier proteins, most of which were in the typically developing (TD) group.
+This report explores the identification of biomarkers associated with Autism Spectrum Disorder (ASD) using data from L. Hewitson's experiment in 2021. Though the original report has since been retracted due to unreliable methodology, this report explores the data and tests alternate methods to those used in the original study. We started with testing why the data was log-transformed, concluding the log-transformation simply made the data more closely resemble a normal distribution, making it easier to work with. We then tested to see if there are any proteins that seem to commonly occur as outliers and if there are any subjects that seem to consistently have outlier protein values. After this analysis, it was apparent that none of the proteins occur disproportionately as outliers, however there were a few patients with over 40 outlier proteins, most of which were in the typically developing (TD) group.
 
 To explore alternative predictive biomarkers, we performed feature selection using a training partition to avoid overfitting and replicated the selection across different methods. Additionally, we experimented with combining sets of top predictive proteins through both a hard intersection and a fuzzy intersection approach, finding that the latter introduced more flexibility while retaining strong classifiers. Performance metrics demonstrated that these panels could contain other potential reliable biomarkers for ASD diagnosis and reinforced the strength of the DERM and IgD proteins as biomarkers.
 
@@ -534,6 +534,8 @@ testing(biomarker_split) %>%
 
 ### Improved classifier (Task 4)
 
+#### Approach 1: LASSO Regression
+
 ```{r}
 ## Lasso Regression
 ###################
@@ -614,8 +616,64 @@ fit_test %>%
   mutate(est = as.factor(pred > 0.5), tr_c = as.factor(class)) %>%
   class_metrics(estimate = est,
                 truth = tr_c, pred,
-                event_level = 'second')
+                event_level = 'second') %>% knitr::kable()
 
 ```
 
-Having previously been provided with a model that used a multiple t-test and random forest model for the purpose of variable selection, we attempted to find a out if we can create another panel with similar, or better, results. In our first approach, we implemented the lasso regression model with the goal of shrinking all predictors zero except for at most 6. Originally, we wanted to find less than ten, but with some trial and error, the results showed that using only 6 proteins produced the best results. We were left with PTN, MAPK2, Coagulation Factor IX, IgD, DERM, and aldolase A, which we plugged into a logistic model, then calculating the performance metrics using the test data. From the results, the roc_auc and sensitivity of our model were lower than those of the in-class analysis, however, the accuracy was the same and the specificity was higher.
+Having previously been provided with a model that used a multiple t-test and random forest model for the purpose of variable selection, we attempted to find out if we can create another panel with similar, or better, results. In our first approach, we implemented the lasso regression model with the goal of shrinking all predictors to zero except for at most 6. Originally, we wanted to find less than ten, but with some trial and error, the results showed that using only 6 proteins produced the best results. We were left with PTN, MAPK2, Coagulation Factor IX, IgD, DERM, and aldolase A, which we plugged into a logistic model, then calculating the performance metrics using the test data. From the results, the roc_auc and sensitivity of our model were lower than those of the in-class analysis, however, the accuracy was the same and the specificity was higher.
+
+#### Approach 2: Stepwise Variable Selection
+
+```{r}
+# partition
+set.seed(101622)
+partitions <- biomarker %>%
+  initial_split(prop = 0.8, strata = class)
+
+biomarker_train <- training(partitions)
+biomarker_test <- testing(partitions)
+```
+
+In the second approach, we split the data into a train/test split at a 80/20 proportion stratified across `class` to ensure even amounts of ASD and TD boys in both sets. In this approach, we opted for a different method of selecting predictors. Here, we performed forward selection, starting with a null model containing only an intercept and iteratively adding each of the 18 proteins identified in the study:
+
+![Possible Predictors Identified by Hewitson et al.](report_files/possiblePreds.PNG){fig-align="center"}
+
+Performing Forward Stepwise Regression resulted in the below model:
+
+```{r, message = T}
+# All proteins as identified by the three methods in the paper
+# First 5 are identified by all methods (core panel)
+max_predictors <- c("DERM", "suPAR", "MAPK14", "IgD", "EPHB2", 
+                    "ALCAM", "`eIF-4H`", "SOST", "C6", "Calcineurin",
+                    "FCN1", "C1QR1", "PTN", "RELT", "`Prolactin Receptor`", "ROR1",
+                    "GI24", "ARSB")
+
+max_formula <- as.formula(paste("class ~", paste(max_predictors, collapse = "+")))
+
+full_fit <- glm(max_formula, data = biomarker_train, family = binomial)
+null_fit <- glm(class ~ 1, data = biomarker_train, family = binomial)
+
+forward_model <- stats::step(null_fit, direction = "forward", 
+                             scope = list(lower = null_fit, upper = full_fit), trace = 0)
+
+summary(forward_model)
+
+```
+
+From the above output of `summary(forward_model)`, we see that 8 out of the 18 proteins were selected to be included as predictors of ASD. The selected proteins were **DERM, IgD, FCN1, eIF-4H, PTN, C6, EPHB2, and ROR1.**
+
+Interestingly, the model found through forward stepwise selection did not include the proteins MAPK14 or suPAR, which is surprising considering that these proteins were part of the "core panel" found by Hewitson et al., meaning that each of the three methods used in the study identified these as being significant predictors of ASD. Despite the exclusion of these two "core" proteins, this model performed well on the testing data, achieving the below sensitivity, specificity, accuracy, and ROC AUC.
+
+```{r, message = T}
+class_metrics <- metric_set(sensitivity, specificity, accuracy, roc_auc)
+model_predictors <- forward_model$model %>% select(-class) %>% colnames()
+
+biomarker_test %>% 
+  select(all_of(model_predictors), class) %>% 
+  modelr::add_predictions(model = forward_model, type = "response") %>% 
+  mutate(est = as.factor(pred>0.5), 
+         tr = as.factor(ifelse(class == 1, T, F))) %>%
+  class_metrics(truth = tr, estimate = est, pred, event_level = "second") %>% 
+  knitr::kable()
+
+```
