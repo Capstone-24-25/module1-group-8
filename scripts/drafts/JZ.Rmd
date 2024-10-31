@@ -1,0 +1,52 @@
+```{r, message = F}
+library(tidyverse)
+library(tidymodels)
+load('../../data/biomarker-clean.RData')
+biomarker <- biomarker_clean %>%
+  mutate(class = as.numeric(group == 'ASD')) %>% 
+  select(-ados, -group)
+```
+
+
+```{r}
+# partition
+set.seed(101622)
+partitions <- biomarker %>%
+  initial_split(prop = 0.8, strata = class)
+
+biomarker_train <- training(partitions)
+biomarker_test <- testing(partitions)
+```
+
+```{r}
+# All proteins as identified by the three methods in the paper
+# First 5 are identified by all methods (core panel)
+max_predictors <- c("DERM", "suPAR", "MAPK14", "IgD", "EPHB2", 
+                    "ALCAM", "`eIF-4H`", "SOST", "C6", "Calcineurin",
+                    "FCN1", "C1QR1", "PTN", "RELT", "`Prolactin Receptor`", "ROR1",
+                    "GI24", "ARSB")
+
+max_formula <- as.formula(paste("class ~", paste(max_predictors, collapse = "+")))
+
+full_fit <- glm(max_formula, data = biomarker_train, family = binomial)
+null_fit <- glm(class ~ 1, data = biomarker_train, family = binomial)
+
+forward_model <- stats::step(null_fit, direction = "forward", 
+                             scope = list(lower = null_fit, upper = full_fit), trace = 0)
+
+```
+
+```{r}
+class_metrics <- metric_set(sensitivity, specificity, accuracy, roc_auc)
+model_predictors <- forward_model$model %>% select(-class) %>% colnames()
+
+biomarker_test %>% 
+  select(all_of(model_predictors), class) %>% 
+  modelr::add_predictions(model = forward_model, type = "response") %>% 
+  mutate(est = as.factor(pred>0.5), 
+         tr = as.factor(ifelse(class == 1, T, F))) %>%
+  class_metrics(truth = tr, estimate = est, pred, event_level = "second")
+
+```
+
+
